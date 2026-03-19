@@ -1,0 +1,188 @@
+generator client {
+	provider = "prisma-client-js"
+}
+
+datasource db {
+	provider = "mongodb"
+	url      = env("DATABASE_URL")
+}
+
+enum Gender {
+	MALE
+	FEMALE
+	OTHER
+}
+
+enum AppointmentStatus {
+	SCHEDULED
+	COMPLETED
+	CANCELLED
+	NO_SHOW
+}
+
+enum PaymentStatus {
+	PENDING
+	PAID
+	PARTIAL
+	FAILED
+}
+
+model Patient {
+	id               String            @id @default(auto()) @map("_id") @db.ObjectId
+	patientId        String            @unique
+	firstName        String
+	lastName         String
+	dateOfBirth      DateTime
+	gender           Gender
+	phone            String
+	email            String?
+	address          Address?
+	bloodGroup       String?
+	allergies        String[]
+	emergencyContact EmergencyContact?
+	diagnosisHistory DiagnosisRecord[]
+	treatmentHistory TreatmentRecord[]
+	prescriptions    Prescription[]
+	appointments     Appointment[]
+	bills            Bill[]
+	isActive         Boolean           @default(true)
+	createdAt        DateTime          @default(now())
+	updatedAt        DateTime          @updatedAt
+
+	@@index([lastName])
+	@@index([phone])
+}
+
+model Doctor {
+	id             String        @id @default(auto()) @map("_id") @db.ObjectId
+	doctorId       String        @unique
+	firstName      String
+	lastName       String
+	specialization String
+	department     String
+	phone          String
+	email          String?
+	availability   String?
+	isActive       Boolean       @default(true)
+	appointments   Appointment[]
+	createdAt      DateTime      @default(now())
+	updatedAt      DateTime      @updatedAt
+
+	@@index([specialization])
+	@@index([department])
+}
+
+model Appointment {
+	id            String            @id @default(auto()) @map("_id") @db.ObjectId
+	appointmentId String            @unique
+	patientRefId  String            @db.ObjectId
+	doctorRefId   String            @db.ObjectId
+	appointmentAt DateTime
+	reason        String?
+	status        AppointmentStatus @default(SCHEDULED)
+	notes         String?
+	patient       Patient           @relation(fields: [patientRefId], references: [id])
+	doctor        Doctor            @relation(fields: [doctorRefId], references: [id])
+	bills         Bill[]
+	createdAt     DateTime          @default(now())
+	updatedAt     DateTime          @updatedAt
+
+	@@index([patientRefId])
+	@@index([doctorRefId])
+	@@index([appointmentAt])
+}
+
+model PharmacyItem {
+	id         String   @id @default(auto()) @map("_id") @db.ObjectId
+	itemId     String   @unique
+	name       String
+	category   String?
+	stock      Int
+	minStock   Int      @default(0)
+	expiryDate DateTime?
+	unitPrice  Float
+	isActive   Boolean  @default(true)
+	createdAt  DateTime @default(now())
+	updatedAt  DateTime @updatedAt
+
+	@@index([name])
+	@@index([category])
+}
+
+model Bill {
+	id               String        @id @default(auto()) @map("_id") @db.ObjectId
+	billId           String        @unique
+	patientRefId     String        @db.ObjectId
+	appointmentRefId String?       @db.ObjectId
+	consultationFee  Float         @default(0)
+	medicineCharges  Float         @default(0)
+	labCharges       Float         @default(0)
+	serviceCharges   Float         @default(0)
+	totalAmount      Float
+	paymentStatus    PaymentStatus @default(PENDING)
+	paidAt           DateTime?
+	patient          Patient       @relation(fields: [patientRefId], references: [id])
+	appointment      Appointment?  @relation(fields: [appointmentRefId], references: [id])
+	createdAt        DateTime      @default(now())
+	updatedAt        DateTime      @updatedAt
+
+	@@index([patientRefId])
+	@@index([appointmentRefId])
+	@@index([paymentStatus])
+}
+
+model Staff {
+	id         String   @id @default(auto()) @map("_id") @db.ObjectId
+	staffId    String   @unique
+	firstName  String
+	lastName   String
+	role       String
+	department String
+	phone      String
+	email      String?
+	isActive   Boolean  @default(true)
+	createdAt  DateTime @default(now())
+	updatedAt  DateTime @updatedAt
+
+	@@index([role])
+	@@index([department])
+}
+
+type Address {
+	line1      String?
+	line2      String?
+	city       String?
+	state      String?
+	postalCode String?
+	country    String?
+}
+
+type EmergencyContact {
+	name     String?
+	relation String?
+	phone    String?
+}
+
+type DiagnosisRecord {
+	diagnosis   String
+	diagnosedBy String?
+	diagnosedAt DateTime @default(now())
+	notes       String?
+}
+
+type TreatmentRecord {
+	treatment String
+	doctor    String?
+	startDate DateTime @default(now())
+	endDate   DateTime?
+	notes     String?
+}
+
+type Prescription {
+	medicineName    String
+	dosage          String?
+	frequency       String?
+	durationInDays  Int?
+	prescribedBy    String?
+	prescribedAt    DateTime @default(now())
+}
