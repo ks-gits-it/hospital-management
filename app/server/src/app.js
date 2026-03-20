@@ -7,6 +7,22 @@ const PORT = Number(process.env.PORT || 4000);
 
 app.use(express.json());
 
+app.use((req, res, next) => {
+  const startTime = process.hrtime.bigint();
+
+  res.on('finish', () => {
+    const endTime = process.hrtime.bigint();
+    const durationMs = Number(endTime - startTime) / 1_000_000;
+    const timestamp = new Date().toISOString();
+
+    console.log(
+      `[${timestamp}] ${req.method} ${req.originalUrl} ${res.statusCode} ${durationMs.toFixed(2)}ms`,
+    );
+  });
+
+  next();
+});
+
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
 });
