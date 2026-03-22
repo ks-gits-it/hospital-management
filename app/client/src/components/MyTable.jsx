@@ -34,6 +34,39 @@ function stringifyCellValue(value) {
   return String(value);
 }
 
+function formatValueForInput(value, fieldType) {
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  if (fieldType === 'date') {
+    return String(value).slice(0, 10);
+  }
+
+  if (fieldType === 'datetime-local') {
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+      return '';
+    }
+
+    const offset = date.getTimezoneOffset() * 60000;
+    return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+  }
+
+  return String(value);
+}
+
+function buildFormDataFromRow(row, fields) {
+  return fields.reduce((accumulator, field) => {
+    accumulator[field.name] = formatValueForInput(
+      row?.[field.name],
+      field.type,
+    );
+    return accumulator;
+  }, {});
+}
+
 export default function EnhancedTable({
   title = 'Records',
   rows = [],
@@ -41,6 +74,8 @@ export default function EnhancedTable({
   idField = 'id',
   addFields = [],
   onAddRecord,
+  onUpdateRecord,
+  onDeleteRecord,
 }) {
   const initialOrderBy = columns[0]?.id || idField;
   const [order, setOrder] = React.useState('asc');
@@ -53,9 +88,16 @@ export default function EnhancedTable({
   const [addFormData, setAddFormData] = React.useState({});
   const [addError, setAddError] = React.useState('');
   const [isSubmittingAdd, setIsSubmittingAdd] = React.useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = React.useState(false);
+  const [editFormData, setEditFormData] = React.useState({});
+  const [editError, setEditError] = React.useState('');
+  const [isSubmittingEdit, setIsSubmittingEdit] = React.useState(false);
 
   React.useEffect(() => {
-    if (columns.length > 0 && !columns.some((column) => column.id === orderBy)) {
+    if (
+      columns.length > 0 &&
+      !columns.some((column) => column.id === orderBy)
+    ) {
       setOrderBy(columns[0].id);
     }
   }, [columns, orderBy]);
@@ -63,6 +105,16 @@ export default function EnhancedTable({
   const getRowId = React.useCallback(
     (row, index) => row[idField] ?? row.id ?? `${index}`,
     [idField],
+  );
+
+  const selectedRows = React.useMemo(
+    () =>
+      selected
+        .map((selectedId) =>
+          rows.find((row, index) => getRowId(row, index) === selectedId),
+        )
+        .filter(Boolean),
+    [getRowId, rows, selected],
   );
 
   const handleRequestSort = (event, property) => {
@@ -118,14 +170,37 @@ export default function EnhancedTable({
     setIsAddDialogOpen(true);
   };
 
+  const handleOpenEditDialog = () => {
+    if (selectedRows.length !== 1) {
+      return;
+    }
+
+    setEditError('');
+    setEditFormData(buildFormDataFromRow(selectedRows[0], addFields));
+    setIsEditDialogOpen(true);
+  };
+
   const handleCloseAddDialog = () => {
     if (!isSubmittingAdd) {
       setIsAddDialogOpen(false);
     }
   };
 
+  const handleCloseEditDialog = () => {
+    if (!isSubmittingEdit) {
+      setIsEditDialogOpen(false);
+    }
+  };
+
   const handleAddFormChange = (fieldName, value) => {
     setAddFormData((previous) => ({
+      ...previous,
+      [fieldName]: value,
+    }));
+  };
+
+  const handleEditFormChange = (fieldName, value) => {
+    setEditFormData((previous) => ({
       ...previous,
       [fieldName]: value,
     }));
@@ -142,7 +217,9 @@ export default function EnhancedTable({
       }
 
       const value = addFormData[field.name];
-      return value === undefined || value === null || String(value).trim() === '';
+      return (
+        value === undefined || value === null || String(value).trim() === ''
+      );
     });
 
     if (missingRequiredField) {
@@ -160,6 +237,63 @@ export default function EnhancedTable({
       setAddError(submitError.message || 'Failed to add record.');
     } finally {
       setIsSubmittingAdd(false);
+    }
+  };
+
+  const handleSubmitEdit = async () => {
+    if (!onUpdateRecord || selectedRows.length !== 1) {
+      return;
+    }
+
+    const missingRequiredField = addFields.find((field) => {
+      if (!field.required) {
+        return false;
+      }
+
+      const value = editFormData[field.name];
+      return (
+        value === undefined || value === null || String(value).trim() === ''
+      );
+    });
+
+    if (missingRequiredField) {
+      setEditError(`${missingRequiredField.label} is required.`);
+      return;
+    }
+
+    try {
+      setEditError('');
+      setIsSubmittingEdit(true);
+      await onUpdateRecord({ row: selectedRows[0], values: editFormData });
+      setIsEditDialogOpen(false);
+      setEditFormData({});
+      setSelected([]);
+    } catch (submitError) {
+      setEditError(submitError.message || 'Failed to update record.');
+    } finally {
+      setIsSubmittingEdit(false);
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (!onDeleteRecord || selectedRows.length === 0) {
+      return;
+    }
+
+    const confirmDelete = window.confirm(
+      `Delete ${selectedRows.length} selected ${selectedRows.length === 1 ? 'record' : 'records'}?`,
+    );
+
+    if (!confirmDelete) {
+      return;
+    }
+
+    try {
+      await onDeleteRecord(selectedRows);
+      setSelected([]);
+    } catch (deleteError) {
+      // eslint-disable-next-line no-alert
+      window.alert(deleteError.message || 'Failed to delete record(s).');
     }
   };
 
@@ -184,6 +318,8 @@ export default function EnhancedTable({
           numSelected={selected.length}
           title={title}
           onAddClick={handleOpenAddDialog}
+          onEditClick={handleOpenEditDialog}
+          onDeleteClick={handleDeleteSelected}
         />
         <TableContainer>
           <Table
@@ -285,7 +421,12 @@ export default function EnhancedTable({
         label="Dense padding"
       />
 
-      <Dialog open={isAddDialogOpen} onClose={handleCloseAddDialog} fullWidth maxWidth="sm">
+      <Dialog
+        open={isAddDialogOpen}
+        onClose={handleCloseAddDialog}
+        fullWidth
+        maxWidth="sm"
+      >
         <DialogTitle>{`Add ${title}`}</DialogTitle>
         <DialogContent sx={{ display: 'grid', gap: 2, mt: 1 }}>
           {addError && <Alert severity="error">{addError}</Alert>}
@@ -297,7 +438,9 @@ export default function EnhancedTable({
               select={Boolean(field.options)}
               required={Boolean(field.required)}
               value={addFormData[field.name] ?? ''}
-              onChange={(event) => handleAddFormChange(field.name, event.target.value)}
+              onChange={(event) =>
+                handleAddFormChange(field.name, event.target.value)
+              }
               fullWidth
               slotProps={
                 field.type === 'datetime-local' || field.type === 'date'
@@ -319,8 +462,63 @@ export default function EnhancedTable({
           <Button onClick={handleCloseAddDialog} disabled={isSubmittingAdd}>
             Cancel
           </Button>
-          <Button variant="contained" onClick={handleSubmitAdd} disabled={isSubmittingAdd}>
+          <Button
+            variant="contained"
+            onClick={handleSubmitAdd}
+            disabled={isSubmittingAdd}
+          >
             {isSubmittingAdd ? 'Saving...' : 'Save'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={isEditDialogOpen}
+        onClose={handleCloseEditDialog}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>{`Update ${title}`}</DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 2, mt: 1 }}>
+          {editError && <Alert severity="error">{editError}</Alert>}
+          {addFields.map((field) => (
+            <TextField
+              key={field.name}
+              label={field.label}
+              type={field.type || 'text'}
+              select={Boolean(field.options)}
+              required={Boolean(field.required)}
+              value={editFormData[field.name] ?? ''}
+              onChange={(event) =>
+                handleEditFormChange(field.name, event.target.value)
+              }
+              fullWidth
+              slotProps={
+                field.type === 'datetime-local' || field.type === 'date'
+                  ? {
+                      inputLabel: { shrink: true },
+                    }
+                  : undefined
+              }
+            >
+              {field.options?.map((option) => (
+                <MenuItem key={option.value} value={option.value}>
+                  {option.label}
+                </MenuItem>
+              ))}
+            </TextField>
+          ))}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseEditDialog} disabled={isSubmittingEdit}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleSubmitEdit}
+            disabled={isSubmittingEdit}
+          >
+            {isSubmittingEdit ? 'Updating...' : 'Update'}
           </Button>
         </DialogActions>
       </Dialog>

@@ -47,6 +47,28 @@ router.post('/', async (req, res) => {
   }
 });
 
+router.put('/:id', async (req, res) => {
+  try {
+    const staff = await prisma.staff.update({
+      where: { id: req.params.id },
+      data: {
+        staffId: req.body.staffId,
+        firstName: req.body.firstName,
+        lastName: req.body.lastName,
+        role: req.body.role,
+        department: req.body.department,
+        phone: req.body.phone,
+        email: req.body.email,
+        isActive: req.body.isActive,
+      },
+    });
+
+    return res.status(200).json(staff);
+  } catch (error) {
+    return res.status(400).json({ message: error.message });
+  }
+});
+
 router.delete('/:id', async (req, res) => {
   try {
     await prisma.staff.delete({ where: { id: req.params.id } });

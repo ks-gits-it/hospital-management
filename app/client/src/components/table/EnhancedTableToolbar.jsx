@@ -3,6 +3,7 @@ import Toolbar from '@mui/material/Toolbar';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
+import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
 
@@ -10,6 +11,8 @@ export default function EnhancedTableToolbar({
   numSelected,
   title = 'Records',
   onAddClick,
+  onEditClick,
+  onDeleteClick,
 }) {
   return (
     <Toolbar
@@ -20,7 +23,10 @@ export default function EnhancedTableToolbar({
         },
         numSelected > 0 && {
           bgcolor: (theme) =>
-            alpha(theme.palette.primary.main, theme.palette.action.activatedOpacity),
+            alpha(
+              theme.palette.primary.main,
+              theme.palette.action.activatedOpacity,
+            ),
         },
       ]}
     >
@@ -45,11 +51,20 @@ export default function EnhancedTableToolbar({
       )}
 
       {numSelected > 0 ? (
-        <Tooltip title="Delete">
-          <IconButton>
-            <DeleteIcon />
-          </IconButton>
-        </Tooltip>
+        <>
+          {numSelected === 1 && onEditClick ? (
+            <Tooltip title="Edit">
+              <IconButton onClick={onEditClick}>
+                <EditIcon />
+              </IconButton>
+            </Tooltip>
+          ) : null}
+          <Tooltip title="Delete">
+            <IconButton onClick={onDeleteClick}>
+              <DeleteIcon />
+            </IconButton>
+          </Tooltip>
+        </>
       ) : (
         <Tooltip title="Add record">
           <IconButton onClick={onAddClick}>

@@ -48,6 +48,29 @@ router.post('/', async (req, res) => {
   }
 });
 
+router.put('/:id', async (req, res) => {
+  try {
+    const doctor = await prisma.doctor.update({
+      where: { id: req.params.id },
+      data: {
+        doctorId: req.body.doctorId,
+        firstName: req.body.firstName,
+        lastName: req.body.lastName,
+        specialization: req.body.specialization,
+        department: req.body.department,
+        phone: req.body.phone,
+        email: req.body.email,
+        availability: req.body.availability,
+        isActive: req.body.isActive,
+      },
+    });
+
+    return res.status(200).json(doctor);
+  } catch (error) {
+    return res.status(400).json({ message: error.message });
+  }
+});
+
 router.delete('/:id', async (req, res) => {
   try {
     await prisma.doctor.delete({ where: { id: req.params.id } });

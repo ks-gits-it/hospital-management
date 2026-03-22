@@ -56,6 +56,41 @@ router.post('/', async (req, res) => {
   }
 });
 
+router.put('/:id', async (req, res) => {
+  try {
+    const consultationFee = Number(req.body.consultationFee ?? 0);
+    const medicineCharges = Number(req.body.medicineCharges ?? 0);
+    const labCharges = Number(req.body.labCharges ?? 0);
+    const serviceCharges = Number(req.body.serviceCharges ?? 0);
+    const totalAmount = Number(
+      req.body.totalAmount ??
+        consultationFee + medicineCharges + labCharges + serviceCharges,
+    );
+
+    const bill = await prisma.bill.update({
+      where: { id: req.params.id },
+      data: {
+        billId: req.body.billId,
+        patientRefId: req.body.patientRefId,
+        appointmentRefId: req.body.appointmentRefId || null,
+        consultationFee,
+        medicineCharges,
+        labCharges,
+        serviceCharges,
+        totalAmount,
+        paymentStatus: req.body.paymentStatus
+          ? String(req.body.paymentStatus).toUpperCase()
+          : undefined,
+        paidAt: req.body.paidAt ? new Date(req.body.paidAt) : null,
+      },
+    });
+
+    return res.status(200).json(bill);
+  } catch (error) {
+    return res.status(400).json({ message: error.message });
+  }
+});
+
 router.delete('/:id', async (req, res) => {
   try {
     await prisma.bill.delete({ where: { id: req.params.id } });

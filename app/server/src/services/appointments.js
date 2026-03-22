@@ -46,6 +46,31 @@ router.post('/', async (req, res) => {
   }
 });
 
+router.put('/:id', async (req, res) => {
+  try {
+    const appointment = await prisma.appointment.update({
+      where: { id: req.params.id },
+      data: {
+        appointmentId: req.body.appointmentId,
+        patientRefId: req.body.patientRefId,
+        doctorRefId: req.body.doctorRefId,
+        appointmentAt: req.body.appointmentAt
+          ? new Date(req.body.appointmentAt)
+          : undefined,
+        reason: req.body.reason,
+        status: req.body.status
+          ? String(req.body.status).toUpperCase()
+          : undefined,
+        notes: req.body.notes,
+      },
+    });
+
+    return res.status(200).json(appointment);
+  } catch (error) {
+    return res.status(400).json({ message: error.message });
+  }
+});
+
 router.delete('/:id', async (req, res) => {
   try {
     await prisma.appointment.delete({ where: { id: req.params.id } });

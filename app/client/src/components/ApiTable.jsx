@@ -1,4 +1,4 @@
-import * as React from 'react';
+import { useCallback, useMemo, useState, useEffect } from 'react';
 import Alert from '@mui/material/Alert';
 import CircularProgress from '@mui/material/CircularProgress';
 import Stack from '@mui/material/Stack';
@@ -33,15 +33,31 @@ function buildAddFormConfig(endpoint, options) {
     ...options.appointmentOptions,
   ];
 
-  const optionalStatusOptions = [{ value: '', label: 'None' }, ...appointmentStatusOptions];
-  const optionalPaymentStatusOptions = [{ value: '', label: 'None' }, ...paymentStatusOptions];
+  const optionalStatusOptions = [
+    { value: '', label: 'None' },
+    ...appointmentStatusOptions,
+  ];
+  const optionalPaymentStatusOptions = [
+    { value: '', label: 'None' },
+    ...paymentStatusOptions,
+  ];
 
   const addFormConfigByEndpoint = {
     '/api/patients': [
       { name: 'firstName', label: 'First Name', required: true },
       { name: 'lastName', label: 'Last Name', required: true },
-      { name: 'dateOfBirth', label: 'Date of Birth', type: 'date', required: true },
-      { name: 'gender', label: 'Gender', required: true, options: genderOptions },
+      {
+        name: 'dateOfBirth',
+        label: 'Date of Birth',
+        type: 'date',
+        required: true,
+      },
+      {
+        name: 'gender',
+        label: 'Gender',
+        required: true,
+        options: genderOptions,
+      },
       { name: 'phone', label: 'Phone', required: true },
       { name: 'email', label: 'Email' },
     ],
@@ -84,7 +100,12 @@ function buildAddFormConfig(endpoint, options) {
       { name: 'category', label: 'Category' },
       { name: 'stock', label: 'Stock', type: 'number', required: true },
       { name: 'minStock', label: 'Min Stock', type: 'number' },
-      { name: 'unitPrice', label: 'Unit Price', type: 'number', required: true },
+      {
+        name: 'unitPrice',
+        label: 'Unit Price',
+        type: 'number',
+        required: true,
+      },
       { name: 'expiryDate', label: 'Expiry Date', type: 'date' },
     ],
     '/api/billing': [
@@ -142,7 +163,11 @@ function normalizeCreatePayload(formData, addFields) {
   return addFields.reduce((payload, field) => {
     const rawValue = formData[field.name];
 
-    if (rawValue === undefined || rawValue === null || String(rawValue).trim() === '') {
+    if (
+      rawValue === undefined ||
+      rawValue === null ||
+      String(rawValue).trim() === ''
+    ) {
       return payload;
     }
 
@@ -156,22 +181,55 @@ function normalizeCreatePayload(formData, addFields) {
   }, {});
 }
 
+function normalizeUpdatePayload(formData, addFields) {
+  return normalizeCreatePayload(formData, addFields);
+}
+
+function getRecordId(record, idField) {
+  return record && record[idField] !== undefined && record[idField] !== null
+    ? record[idField]
+    : null;
+}
+
+function mergeUpdatedRows(prevRows, updatedRows, idField) {
+  const updates = Array.isArray(updatedRows) ? updatedRows : [updatedRows];
+
+  return prevRows.map((row) => {
+    const matchedUpdate = updates.find(
+      (item) => getRecordId(item, idField) === getRecordId(row, idField),
+    );
+
+    return matchedUpdate ? { ...row, ...matchedUpdate } : row;
+  });
+}
+
+function removeDeletedRows(prevRows, deletedRows, idField) {
+  const deletions = Array.isArray(deletedRows) ? deletedRows : [deletedRows];
+  const deletedIds = new Set(
+    deletions.map((item) =>
+      typeof item === 'object' ? getRecordId(item, idField) : item,
+    ),
+  );
+
+  return prevRows.filter((row) => !deletedIds.has(getRecordId(row, idField)));
+}
+
 export default function ApiTable({ title, endpoint, columns, idField = 'id' }) {
-  const [rows, setRows] = React.useState([]);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState('');
-  const [lookupOptions, setLookupOptions] = React.useState({
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [lookupOptions, setLookupOptions] = useState({
     patientOptions: [],
     doctorOptions: [],
     appointmentOptions: [],
   });
 
-  const addFields = React.useMemo(
+  const addFields = useMemo(
     () => buildAddFormConfig(endpoint, lookupOptions),
     [endpoint, lookupOptions],
   );
 
-  const loadRows = React.useCallback(
+  const refreshRows = useCallback(
     async (signal) => {
       setLoading(true);
       setError('');
@@ -190,15 +248,17 @@ export default function ApiTable({ title, endpoint, columns, idField = 'id' }) {
     [endpoint, title],
   );
 
-  React.useEffect(() => {
+  useEffect(() => {
     const controller = new AbortController();
 
     async function hydrateRows() {
       try {
-        await loadRows(controller.signal);
+        await refreshRows(controller.signal);
       } catch (fetchError) {
         if (fetchError.name !== 'AbortError') {
-          setError(fetchError.message || 'Something went wrong while loading data.');
+          setError(
+            fetchError.message || 'Something went wrong while loading data.',
+          );
         }
       } finally {
         setLoading(false);
@@ -210,26 +270,27 @@ export default function ApiTable({ title, endpoint, columns, idField = 'id' }) {
     return () => {
       controller.abort();
     };
-  }, [loadRows]);
+  }, [refreshRows]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     let isActive = true;
 
     async function loadLookupData() {
-      const [patientOptions, doctorOptions, appointmentOptions] = await Promise.all([
-        fetchLookupOptions('/api/patients', (patient) => ({
-          value: patient.id,
-          label: `${patient.patientId} - ${patient.firstName} ${patient.lastName}`,
-        })),
-        fetchLookupOptions('/api/doctors', (doctor) => ({
-          value: doctor.id,
-          label: `${doctor.doctorId} - ${doctor.firstName} ${doctor.lastName}`,
-        })),
-        fetchLookupOptions('/api/appointments', (appointment) => ({
-          value: appointment.id,
-          label: `${appointment.appointmentId} - ${new Date(appointment.appointmentAt).toLocaleString()}`,
-        })),
-      ]);
+      const [patientOptions, doctorOptions, appointmentOptions] =
+        await Promise.all([
+          fetchLookupOptions('/api/patients', (patient) => ({
+            value: patient.id,
+            label: `${patient.patientId} - ${patient.firstName} ${patient.lastName}`,
+          })),
+          fetchLookupOptions('/api/doctors', (doctor) => ({
+            value: doctor.id,
+            label: `${doctor.doctorId} - ${doctor.firstName} ${doctor.lastName}`,
+          })),
+          fetchLookupOptions('/api/appointments', (appointment) => ({
+            value: appointment.id,
+            label: `${appointment.appointmentId} - ${new Date(appointment.appointmentAt).toLocaleString()}`,
+          })),
+        ]);
 
       if (!isActive) {
         return;
@@ -249,7 +310,7 @@ export default function ApiTable({ title, endpoint, columns, idField = 'id' }) {
     };
   }, []);
 
-  const handleAddRecord = React.useCallback(
+  const handleAddRecord = useCallback(
     async (formData) => {
       const payload = normalizeCreatePayload(formData, addFields);
 
@@ -263,19 +324,88 @@ export default function ApiTable({ title, endpoint, columns, idField = 'id' }) {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `Failed to add ${title.toLowerCase()}.`);
+        throw new Error(
+          errorData.message || `Failed to add ${title.toLowerCase()}.`,
+        );
       }
 
-      await loadRows();
+      await refreshRows();
     },
-    [addFields, endpoint, loadRows, title],
+    [addFields, endpoint, refreshRows, title],
+  );
+
+  const handleUpdateRecord = useCallback(
+    async (updateRequest) => {
+      const requests = Array.isArray(updateRequest)
+        ? updateRequest
+        : [updateRequest];
+
+      const updatedRows = await Promise.all(
+        requests.map(async ({ row, values }) => {
+          const recordId = getRecordId(row, idField);
+
+          const response = await fetch(
+            `${API_BASE_URL}${endpoint}/${recordId}`,
+            {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(normalizeUpdatePayload(values, addFields)),
+            },
+          );
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(
+              errorData.message || `Failed to update ${title.toLowerCase()}.`,
+            );
+          }
+
+          return response.json();
+        }),
+      );
+
+      setRows((prevRows) => mergeUpdatedRows(prevRows, updatedRows, idField));
+    },
+    [addFields, endpoint, idField, title],
+  );
+
+  const handleDeleteRecord = useCallback(
+    async (deletedRows) => {
+      const removals = Array.isArray(deletedRows) ? deletedRows : [deletedRows];
+
+      await Promise.all(
+        removals.map(async (row) => {
+          const recordId = getRecordId(row, idField);
+          const response = await fetch(
+            `${API_BASE_URL}${endpoint}/${recordId}`,
+            {
+              method: 'DELETE',
+            },
+          );
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(
+              errorData.message || `Failed to delete ${title.toLowerCase()}.`,
+            );
+          }
+        }),
+      );
+
+      setRows((prevRows) => removeDeletedRows(prevRows, removals, idField));
+    },
+    [endpoint, idField, title],
   );
 
   if (loading) {
     return (
       <Stack spacing={2} alignItems="center" sx={{ width: '100%', py: 6 }}>
         <CircularProgress />
-        <Typography variant="body1">Loading {title.toLowerCase()}...</Typography>
+        <Typography variant="body1">
+          Loading {title.toLowerCase()}...
+        </Typography>
       </Stack>
     );
   }
@@ -296,6 +426,8 @@ export default function ApiTable({ title, endpoint, columns, idField = 'id' }) {
       idField={idField}
       addFields={addFields}
       onAddRecord={handleAddRecord}
+      onUpdateRecord={handleUpdateRecord}
+      onDeleteRecord={handleDeleteRecord}
     />
   );
 }
